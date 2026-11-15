@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse
@@ -6,11 +7,12 @@ from pydantic import BaseModel
 from typing import List
 
 app = FastAPI(title="Решись Авиа — прогноз спроса")
-templates = Jinja2Templates(directory="templates")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 # ---------- загрузка данных ----------
-FORECAST = pd.read_csv("data/Рыжова Екатерина Дмитриевна_my_forecast.csv")
-ROUTES = pd.read_csv("data/routes.csv")
+FORECAST = pd.read_csv(os.path.join(BASE_DIR, "data", "my_forecast.csv"))
+ROUTES = pd.read_csv(os.path.join(BASE_DIR, "data", "routes.csv"))
 
 # нормализуем названия колонок на всякий случай
 FORECAST.columns = [c.strip() for c in FORECAST.columns]
