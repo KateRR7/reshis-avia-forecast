@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Решись Авиа — прогноз спроса</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 16px; }
+  label { display:block; margin-top:12px; font-weight:600; }
+  select, input { width:100%; padding:8px; margin-top:4px; box-sizing:border-box; }
+  button { margin-top:16px; padding:10px 20px; font-size:16px; cursor:pointer; background:#0b7; color:#fff; border:none; border-radius:6px; }
+  .result { margin-top:20px; padding:16px; background:#f3f7ff; border-radius:8px; font-size:16px; }
+  .result b { font-size:20px; }
+  canvas { margin-top:24px; }
+  .err { color:#c00; margin-top:12px; }
+</style>
+</head>
+<body>
+<h1>Прогноз спроса и продаж</h1>
+
+<label>Маршрут
+  <select id="route"></select>
+</label>
+<label>Дата вылета
+  <select id="date"></select>
+</label>
+<label>Цена билета, тыс. руб.
+  <input id="price" type="number" step="0.1" min="0" value="8">
+</label>
+<button id="go">Рассчитать</button>
+
+<div id="err" class="err"></div>
+<div id="res" class="result" style="display:none"></div>
+<canvas id="chart" height="140"></canvas>
+
+<script>
+const routes = {{ routes | tojson }};
+const dates  = {{ dates  | tojson }};
+
+const selRoute = document.getElementById('route');
+const selDate  = document.getElementById('date');
+const inpPrice = document.getElementById('price');
+const btn      = document.getElementById('go');
+const resDiv   = document.getElementById('res');
+const errDiv   = document.getElementById('err');
+let chart = null;
+
+routes.forEach(r => selRoute.add(new Option(r, r)));
+dates.forEach(d  => selDate.add(new Option(d, d)));
+
+function splitRoute(r) {
+  const [origin, destination] = r.split('-');
+  return { origin, destination };
+}
+
+btn.onclick = async () => {
+  errDiv.textContent = '';
+  resDiv.style.display = 'none';
+  const { origin, destination } = splitRoute(selRoute.value);
+  const body = {
+    origin, destination,
+    date: selDate.value,
+    price: parseFloat(inpPrice.value)
+  };
+
+  try {
+    const resp = await fetch('/api/forecast', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    if (!resp.ok) throw new Error((await resp.json()).detail || 'Ошибка');
+    const data = await resp.json();
+
+    resDiv.style.display = 'block';
+    resDiv.innerHTML = `
+      <div>Мест в самолёте: <b>${data.seats}</b></div>
+      <div>Желают купить (медиана): <b>${data.want}</b></div>
+      <div>Прогноз продаж: <b>${data.will_buy}</b></div>
+    `;
+    drawChart(data);
+  } catch (e) {
+    errDiv.textContent = e.message;
+  }
+};
+
+function drawChart(data) {
+  const labels = data.scenarios.map(s => `q${s.quantile}`);
+  const wants  = data.scenarios.map(s => s.want);
+  const buys   = data.scenarios.map(s => s.will_buy);
+
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById('chart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Желают (спрос)', data: wants, borderColor: '#36a', tension: .2 },
+        { label: 'Купят (с учётом мест)', data: buys, borderColor: '#0b7', tension: .2 },
+        { label: 'Мест', data: labels.map(() => data.seats),
+          borderColor: '#c33', borderDash: [6,4], pointRadius: 0 }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom' } },
+      scales: { y: { beginAtZero: true } }
+    }
+  });
+}
+</script>
+</body>
+</html>
